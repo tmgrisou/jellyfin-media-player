@@ -1,0 +1,77 @@
+name: Build Jellyfin Media Player (Arch Final)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: archlinux:latest
+
+    steps:
+      # 1️⃣ Checkout repository
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2️⃣ Update Arch and install dependencies
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git cmake qt6-base qt6-declarative qt6-webengine mpv
+
+      # 3️⃣ Clone Jellyfin Media Player with submodules
+      - name: Clone Jellyfin Media Player
+        run: |
+          git clone --recursive https://github.com/jellyfin/jellyfin-media-player.git jelly
+          cd jelly
+          mkdir build && cd build
+
+          # Use direct gcc/g++ to avoid ccache issues with Qt AutoMoc
+          export CC=gcc
+          export CXX=g++
+
+          # Configure and build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          make -j$(nproc)
+
+          # Install to staging folder
+          DESTDIR=../pkg make install
+
+      # 4️⃣ Package tar.gz
+      - name: Create tar.gz
+        run: |
+          tar czf jellyfin-media-player.tar.gz -C jelly/pkg .
+
+      # 5️⃣ Create Arch package (.pkg.tar.zst)
+      - name: Create Arch package
+        run: |
+          cd jelly
+          mkdir -p pkgbuild
+          cat > pkgbuild/PKGBUILD <<'EOF'
+pkgname=jellyfin-media-player
+pkgver=1.12.0
+pkgrel=1
+pkgdesc="Jellyfin Media Player"
+arch=('x86_64')
+license=('GPL')
+depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'mpv')
+source=()
+pkgdir="../pkg"
+package() {
+    cp -r "$pkgdir/" "$pkgdir/"
+}
+EOF
+          cd pkgbuild
+          # Build the package without recompiling
+          makepkg --force --nobuild
+
+      # 6️⃣ Upload artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jellyfin-media-player
+          path: |
+            jellyfin-media-player.tar.gz
+            jelly/pkgbuild/*.pkg.tar.zst
