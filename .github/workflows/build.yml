@@ -75,4 +75,3 @@ EOF
           path: |
             jellyfin-media-player.tar.gz
             jelly/pkgbuild/*.pkg.tar.zst
-
